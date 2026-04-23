@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Calisthenics Tracker</title>
     <style>
-        :root { --primary: #007bff; --danger: #dc3545; --success: #28a745; --dark: #343a40; --info: #17a2b8; }
+        :root { --primary: #007bff; --danger: #dc3545; --success: #28a745; --dark: #343a40; --info: #17a2b8; --grey: #6c757d; }
         body { font-family: -apple-system, sans-serif; padding: 15px; background: #f8f9fa; color: #333; padding-bottom: 100px; }
         .card { background: white; padding: 15px; border-radius: 12px; margin-bottom: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
         h2, h3 { margin-top: 0; color: #111; }
@@ -13,15 +13,17 @@
         button { background: var(--primary); color: white; border: none; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; }
         .btn-outline { background: transparent; color: var(--primary); border: 1px solid var(--primary); }
         .btn-danger { background: var(--danger); font-size: 12px; padding: 8px; width: auto; margin-top: 10px; }
+        .btn-grey { background: var(--grey); font-size: 12px; padding: 4px 8px; width: auto; }
         .btn-info { background: var(--info); }
         .exercise-block { border-left: 4px solid var(--primary); padding-left: 10px; margin-bottom: 20px; }
-        .set-row { display: flex; align-items: center; gap: 10px; margin-bottom: 5px; }
+        .set-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
         .set-row span { min-width: 60px; font-weight: bold; }
         .history-item { border-bottom: 1px solid #eee; padding-bottom: 15px; }
         .template-tag { font-size: 12px; background: #e9ecef; padding: 4px 10px; border-radius: 10px; display: inline-block; margin: 2px; }
         .backup-zone { margin-top: 30px; display: flex; gap: 10px; }
         .danger-zone { margin-top: 50px; border-top: 2px dashed #ccc; padding-top: 20px; }
         #fileInput { display: none; }
+        .flex-group { display: flex; gap: 10px; }
     </style>
 </head>
 <body>
@@ -38,7 +40,11 @@
         <h2>2. Start Session</h2>
         <div class="card">
             <select id="tplSelect"><option value="">Select a Template...</option></select>
-            <button class="btn-outline" onclick="startSession()">Load Template & Start</button>
+            <div class="flex-group">
+                <button class="btn-outline" onclick="startSession()">Start Workout</button>
+                <button class="btn-info" onclick="filterHistoryByTemplate()">View Past Runs</button>
+            </div>
+            <button class="btn-grey" style="width:100%; margin-top:10px;" onclick="renderHistory()">Show All History</button>
         </div>
     </div>
 
@@ -49,18 +55,17 @@
         <button class="btn-outline" onclick="cancelSession()" style="margin-top:10px;">Cancel (Discard)</button>
     </div>
 
-    <h2>Past Sessions</h2>
+    <h2 id="historyHeader">Past Sessions</h2>
     <div id="historyLog"></div>
 
     <div class="backup-zone">
-        <button class="btn-info" onclick="exportData()">💾 Export Backup</button>
-        <button class="btn-info" onclick="document.getElementById('fileInput').click()">📂 Import Backup</button>
+        <button class="btn-info" onclick="exportData()">💾 Export</button>
+        <button class="btn-info" onclick="document.getElementById('fileInput').click()">📂 Import</button>
         <input type="file" id="fileInput" accept=".json" onchange="importData(event)">
     </div>
 
     <div class="danger-zone">
-        <h3 style="color: var(--danger);">Danger Zone</h3>
-        <button class="btn-danger" style="width: 100%;" onclick="clearFullCache()">Clear All App Data (Reset)</button>
+        <button class="btn-danger" style="width: 100%;" onclick="clearFullCache()">Reset All Data</button>
     </div>
 
     <script>
@@ -83,14 +88,14 @@
             const select = document.getElementById('tplSelect');
             templates.forEach((t, i) => {
                 list.innerHTML += `<span class="template-tag">${t.name}</span> `;
-                select.innerHTML += `<option value="${i}">${t.name}</option>`;
+                select.innerHTML += `<option value="${t.name}">${t.name}</option>`;
             });
         }
 
         function startSession() {
-            const idx = document.getElementById('tplSelect').value;
-            if (idx === "") return;
-            const tpl = templates[idx];
+            const name = document.getElementById('tplSelect').value;
+            if (!name) return;
+            const tpl = templates.find(t => t.name === name);
             activeSessionData = { 
                 name: tpl.name, 
                 date: new Date().toLocaleDateString('en-GB'),
@@ -112,6 +117,7 @@
                             <div class="set-row">
                                 <span>Set ${setIdx + 1}:</span>
                                 <input type="number" value="${val}" onchange="updateSet(${exIdx}, ${setIdx}, this.value)" placeholder="Reps">
+                                <button class="btn-danger" style="margin:0; padding:5px 10px;" onclick="removeSet(${exIdx}, ${setIdx})">✕</button>
                             </div>
                         `).join('')}
                     </div>
@@ -125,6 +131,11 @@
             renderActiveSession();
         }
 
+        function removeSet(exIdx, setIdx) {
+            activeSessionData.exercises[exIdx].sets.splice(setIdx, 1);
+            renderActiveSession();
+        }
+
         function updateSet(exIdx, setIdx, val) {
             activeSessionData.exercises[exIdx].sets[setIdx] = val;
         }
@@ -133,6 +144,34 @@
             history.unshift(activeSessionData);
             localStorage.setItem('workoutHistory', JSON.stringify(history));
             location.reload();
+        }
+
+        function filterHistoryByTemplate() {
+            const selectedName = document.getElementById('tplSelect').value;
+            if (!selectedName) return;
+            const filtered = history.filter(s => s.name === selectedName);
+            document.getElementById('historyHeader').innerText = `History: ${selectedName}`;
+            renderHistory(filtered);
+        }
+
+        function renderHistory(dataToRender = history) {
+            if (dataToRender === history) document.getElementById('historyHeader').innerText = "Past Sessions";
+            const log = document.getElementById('historyLog');
+            if (dataToRender.length === 0) { log.innerHTML = "<p style='color:#999;'>No history found.</p>"; return; }
+            
+            log.innerHTML = dataToRender.map((s, i) => `
+                <div class="card history-item">
+                    <strong>Date: ${s.date}</strong><br>
+                    <strong>${s.name}</strong>
+                    ${s.exercises.map(ex => `
+                        <div style="margin-top:10px;">
+                            <strong>* ${ex.name}</strong>
+                            ${ex.sets.map((r, si) => `<div style="font-size:14px; margin-left:10px;">- set ${si+1}: ${r}</div>`).join('')}
+                        </div>
+                    `).join('')}
+                    <button class="btn-danger" onclick="deleteSession(${i})">Delete</button>
+                </div>
+            `).join('');
         }
 
         function deleteSession(idx) {
@@ -146,9 +185,8 @@
         function exportData() {
             const data = { templates, history };
             const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
-            a.href = url;
+            a.href = URL.createObjectURL(blob);
             a.download = `workout_backup_${new Date().toISOString().split('T')[0]}.json`;
             a.click();
         }
@@ -160,40 +198,16 @@
             reader.onload = function(e) {
                 try {
                     const data = JSON.parse(e.target.result);
-                    if (data.templates && data.history) {
-                        localStorage.setItem('workoutTemplates', JSON.stringify(data.templates));
-                        localStorage.setItem('workoutHistory', JSON.stringify(data.history));
-                        alert("Import Successful!");
-                        location.reload();
-                    } else { throw new Error(); }
-                } catch (err) { alert("Invalid file format."); }
+                    localStorage.setItem('workoutTemplates', JSON.stringify(data.templates));
+                    localStorage.setItem('workoutHistory', JSON.stringify(data.history));
+                    location.reload();
+                } catch (err) { alert("Invalid file."); }
             };
             reader.readAsText(file);
         }
 
         function clearFullCache() {
-            if(confirm("Wipe EVERYTHING?")) {
-                localStorage.clear();
-                location.reload();
-            }
-        }
-
-        function renderHistory() {
-            const log = document.getElementById('historyLog');
-            if (history.length === 0) { log.innerHTML = "<p style='color:#999;'>No history.</p>"; return; }
-            log.innerHTML = history.map((s, i) => `
-                <div class="card history-item">
-                    <strong>Date: ${s.date}</strong><br>
-                    <strong>${s.name}</strong>
-                    ${s.exercises.map(ex => `
-                        <div style="margin-top:10px;">
-                            <strong>* ${ex.name}</strong>
-                            ${ex.sets.map((r, si) => `<div style="font-size:14px; margin-left:10px;">- set ${si+1}: ${r}</div>`).join('')}
-                        </div>
-                    `).join('')}
-                    <button class="btn-danger" onclick="deleteSession(${i})">Delete</button>
-                </div>
-            `).join('');
+            if(confirm("Wipe EVERYTHING?")) { localStorage.clear(); location.reload(); }
         }
 
         function cancelSession() { location.reload(); }
