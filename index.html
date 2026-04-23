@@ -3,87 +3,152 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Basic Training Tracker</title>
+    <title>Calisthenics Tracker</title>
     <style>
-        body { font-family: sans-serif; padding: 20px; background: #f4f4f9; }
-        .card { background: white; padding: 15px; border-radius: 8px; margin-bottom: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        h2 { color: #333; }
-        input, button { padding: 10px; margin: 5px 0; width: 100%; box-sizing: border-box; }
-        button { background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
-        .exercise-row { border-bottom: 1px solid #eee; padding: 10px 0; }
-        .history { font-size: 0.9em; color: #666; }
+        :root { --primary: #007bff; --danger: #dc3545; --success: #28a745; }
+        body { font-family: -apple-system, sans-serif; padding: 15px; background: #f8f9fa; color: #333; }
+        .card { background: white; padding: 15px; border-radius: 12px; margin-bottom: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+        h2, h3 { margin-top: 0; color: #111; }
+        input, button, select { padding: 12px; margin: 5px 0; width: 100%; border-radius: 8px; border: 1px solid #ddd; box-sizing: border-box; font-size: 16px; }
+        button { background: var(--primary); color: white; border: none; font-weight: bold; cursor: pointer; }
+        .btn-outline { background: transparent; color: var(--primary); border: 1px solid var(--primary); }
+        .btn-danger { background: var(--danger); font-size: 12px; padding: 5px; width: auto; margin-top: 10px; }
+        .exercise-block { border-left: 4px solid var(--primary); padding-left: 10px; margin-bottom: 20px; }
+        .set-row { display: flex; align-items: center; gap: 10px; margin-bottom: 5px; }
+        .set-row span { min-width: 60px; font-weight: bold; }
+        .history-item { position: relative; border-bottom: 1px solid #eee; padding-bottom: 10px; }
+        .template-tag { font-size: 12px; background: #e9ecef; padding: 2px 8px; border-radius: 10px; }
     </style>
 </head>
 <body>
 
-<h2>New Workout Session</h2>
-<div class="card">
-    <input type="text" id="sessionName" placeholder="Session Name (e.g., Leg Day)">
-    <input type="text" id="exerciseInput" placeholder="Exercise Name">
-    <button onclick="addExerciseToTemplate()">Add Exercise to Session</button>
-    <div id="currentTemplateList"></div>
-    <button style="background: #28a745;" onclick="saveSession()">Finish & Save Session</button>
-</div>
+    <div id="setup-section">
+        <h2>1. Manage Templates</h2>
+        <div class="card">
+            <input type="text" id="tplName" placeholder="Template Name (e.g. Pull Session)">
+            <input type="text" id="tplExercises" placeholder="Exercises (comma separated)">
+            <button onclick="saveTemplate()">Create Template</button>
+            <div id="templateList" style="margin-top:10px;"></div>
+        </div>
 
-<h2>Past Sessions</h2>
-<div id="historyLog"></div>
+        <h2>2. Start Session</h2>
+        <div class="card">
+            <select id="tplSelect"><option value="">Select a Template...</option></select>
+            <button class="btn-outline" onclick="startSession()">Load Template</button>
+        </div>
+    </div>
 
-<script>
-    let currentExercises = [];
-    let history = JSON.parse(localStorage.getItem('workoutHistory')) || [];
+    <div id="active-session" style="display:none;">
+        <h2 id="currentSessionTitle"></h2>
+        <div id="exerciseArea"></div>
+        <button onclick="finishSession()" style="background: var(--success);">Finish & Save Session</button>
+        <button class="btn-outline" onclick="cancelSession()" style="margin-top:10px;">Cancel</button>
+    </div>
 
-    function addExerciseToTemplate() {
-        const name = document.getElementById('exerciseInput').value;
-        if (!name) return;
-        const ex = { name: name, sets: 0, reps: 0 };
-        currentExercises.push(ex);
-        renderCurrentTemplate();
-        document.getElementById('exerciseInput').value = '';
-    }
+    <h2>Past Sessions</h2>
+    <div id="historyLog"></div>
 
-    function renderCurrentTemplate() {
-        const container = document.getElementById('currentTemplateList');
-        container.innerHTML = currentExercises.map((ex, index) => `
-                <div class="exercise-row">
-                    <strong>${ex.name}</strong>
-                    <input type="number" placeholder="Sets" onchange="updateEx(${index}, 'sets', this.value)">
-                    <input type="number" placeholder="Reps" onchange="updateEx(${index}, 'reps', this.value)">
+    <script>
+        let templates = JSON.parse(localStorage.getItem('workoutTemplates')) || [];
+        let history = JSON.parse(localStorage.getItem('workoutHistory')) || [];
+        let activeSessionData = null;
+
+        function saveTemplate() {
+            const name = document.getElementById('tplName').value;
+            const exStr = document.getElementById('tplExercises').value;
+            if (!name || !exStr) return;
+            const exArray = exStr.split(',').map(s => s.trim());
+            templates.push({ name, exercises: exArray });
+            localStorage.setItem('workoutTemplates', JSON.stringify(templates));
+            location.reload();
+        }
+
+        function renderTemplates() {
+            const list = document.getElementById('templateList');
+            const select = document.getElementById('tplSelect');
+            templates.forEach((t, i) => {
+                list.innerHTML += `<span class="template-tag">${t.name}</span> `;
+                select.innerHTML += `<option value="${i}">${t.name}</option>`;
+            });
+        }
+
+        function startSession() {
+            const idx = document.getElementById('tplSelect').value;
+            if (idx === "") return;
+            const tpl = templates[idx];
+            activeSessionData = { 
+                name: tpl.name, 
+                date: new Date().toLocaleDateString('en-GB'),
+                exercises: tpl.exercises.map(name => ({ name, sets: [] })) 
+            };
+            document.getElementById('setup-section').style.display = 'none';
+            document.getElementById('active-session').style.display = 'block';
+            document.getElementById('currentSessionTitle').innerText = tpl.name;
+            renderActiveSession();
+        }
+
+        function renderActiveSession() {
+            const area = document.getElementById('exerciseArea');
+            area.innerHTML = activeSessionData.exercises.map((ex, exIdx) => `
+                <div class="exercise-block">
+                    <h3>* ${ex.name}</h3>
+                    <div id="sets-ex-${exIdx}">
+                        ${ex.sets.map((val, setIdx) => `
+                            <div class="set-row">
+                                <span>Set ${setIdx + 1}:</span>
+                                <input type="number" value="${val}" onchange="updateSet(${exIdx}, ${setIdx}, this.value)" placeholder="Reps">
+                            </div>
+                        `).join('')}
+                    </div>
+                    <button class="btn-outline" style="width:auto; padding: 5px 15px;" onclick="addSet(${exIdx})">+ Add Set</button>
                 </div>
             `).join('');
-    }
+        }
 
-    function updateEx(index, field, value) {
-        currentExercises[index][field] = value;
-    }
+        function addSet(exIdx) {
+            activeSessionData.exercises[exIdx].sets.push("");
+            renderActiveSession();
+        }
 
-    function saveSession() {
-        const name = document.getElementById('sessionName').value || "Unnamed Session";
-        const session = {
-            name: name,
-            date: new Date().toLocaleDateString(),
-            exercises: [...currentExercises]
-        };
-        history.unshift(session);
-        localStorage.setItem('workoutHistory', JSON.stringify(history));
-        currentExercises = [];
-        document.getElementById('sessionName').value = '';
-        renderCurrentTemplate();
+        function updateSet(exIdx, setIdx, val) {
+            activeSessionData.exercises[exIdx].sets[setIdx] = val;
+        }
+
+        function finishSession() {
+            history.unshift(activeSessionData);
+            localStorage.setItem('workoutHistory', JSON.stringify(history));
+            location.reload();
+        }
+
+        function deleteSession(idx) {
+            if(confirm("Delete this session?")) {
+                history.splice(idx, 1);
+                localStorage.setItem('workoutHistory', JSON.stringify(history));
+                renderHistory();
+            }
+        }
+
+        function renderHistory() {
+            const log = document.getElementById('historyLog');
+            log.innerHTML = history.map((s, i) => `
+                <div class="card history-item">
+                    <strong>Date: ${s.date}</strong><br>
+                    <strong>${s.name}</strong>
+                    ${s.exercises.map(ex => `
+                        <div style="margin-top:10px;">
+                            <strong>* ${ex.name}</strong>
+                            ${ex.sets.map((r, si) => `<div style="font-size:14px; margin-left:10px;">- set ${si+1}: ${r}</div>`).join('')}
+                        </div>
+                    `).join('')}
+                    <button class="btn-danger" onclick="deleteSession(${i})">Delete Session</button>
+                </div>
+            `).join('');
+        }
+
+        function cancelSession() { location.reload(); }
+
+        renderTemplates();
         renderHistory();
-    }
-
-    function renderHistory() {
-        const container = document.getElementById('historyLog');
-        container.innerHTML = history.map(session => `
-                <div class="card history">
-                    <strong>${session.date} - ${session.name}</strong>
-                    <ul>
-                        ${session.exercises.map(ex => `<li>${ex.name}: ${ex.sets} sets x ${ex.reps} reps</li>`).join('')}
-                    </ul>
-                </div>
-            `).join('');
-    }
-
-    renderHistory();
-</script>
+    </script>
 </body>
 </html>
