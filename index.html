@@ -13,17 +13,19 @@
         button { background: var(--primary); color: white; border: none; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; }
         .btn-outline { background: transparent; color: var(--primary); border: 1px solid var(--primary); }
         .btn-danger { background: var(--danger); font-size: 12px; padding: 8px; width: auto; margin-top: 10px; }
-        .btn-grey { background: var(--grey); font-size: 12px; padding: 4px 8px; width: auto; }
+        .btn-grey { background: var(--grey); font-size: 12px; padding: 6px 12px; width: auto; }
         .btn-info { background: var(--info); }
         .exercise-block { border-left: 4px solid var(--primary); padding-left: 10px; margin-bottom: 20px; }
         .set-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
         .set-row span { min-width: 60px; font-weight: bold; }
+        .set-row input { flex-grow: 1; }
         .history-item { border-bottom: 1px solid #eee; padding-bottom: 15px; }
-        .template-tag { font-size: 12px; background: #e9ecef; padding: 4px 10px; border-radius: 10px; display: inline-block; margin: 2px; }
+        .template-tag { font-size: 11px; background: #e9ecef; padding: 4px 8px; border-radius: 10px; display: inline-block; margin: 2px; text-transform: uppercase; }
         .backup-zone { margin-top: 30px; display: flex; gap: 10px; }
         .danger-zone { margin-top: 50px; border-top: 2px dashed #ccc; padding-top: 20px; }
         #fileInput { display: none; }
         .flex-group { display: flex; gap: 10px; }
+        .badge { font-size: 12px; color: var(--info); font-weight: normal; }
     </style>
 </head>
 <body>
@@ -31,7 +33,7 @@
     <div id="setup-section">
         <h2>1. Manage Templates</h2>
         <div class="card">
-            <input type="text" id="tplName" placeholder="Template Name (e.g. Pull Session)">
+            <input type="text" id="tplName" placeholder="Template Name (e.g. OAPU)">
             <input type="text" id="tplExercises" placeholder="Exercises (comma separated)">
             <button onclick="saveTemplate()">Create Template</button>
             <div id="templateList" style="margin-top:10px;"></div>
@@ -59,26 +61,28 @@
     <div id="historyLog"></div>
 
     <div class="backup-zone">
-        <button class="btn-info" onclick="exportData()">💾 Export</button>
-        <button class="btn-info" onclick="document.getElementById('fileInput').click()">📂 Import</button>
+        <button class="btn-info" style="flex:1" onclick="exportData()">💾 Export</button>
+        <button class="btn-info" style="flex:1" onclick="document.getElementById('fileInput').click()">📂 Import</button>
         <input type="file" id="fileInput" accept=".json" onchange="importData(event)">
     </div>
 
     <div class="danger-zone">
-        <button class="btn-danger" style="width: 100%;" onclick="clearFullCache()">Reset All Data</button>
+        <button class="btn-danger" style="width: 100%; opacity: 0.7;" onclick="clearFullCache()">Reset All Data</button>
     </div>
 
     <script>
+        // Load data from LocalStorage
         let templates = JSON.parse(localStorage.getItem('workoutTemplates')) || [];
         let history = JSON.parse(localStorage.getItem('workoutHistory')) || [];
         let activeSessionData = null;
 
         function saveTemplate() {
-            const name = document.getElementById('tplName').value;
-            const exStr = document.getElementById('tplExercises').value;
-            if (!name || !exStr) return;
-            const exArray = exStr.split(',').map(s => s.trim());
-            templates.push({ name, exercises: exArray });
+            const nameInput = document.getElementById('tplName').value.trim();
+            const exStr = document.getElementById('tplExercises').value.trim();
+            if (!nameInput || !exStr) return;
+            
+            const exArray = exStr.split(',').map(s => s.trim()).filter(s => s !== "");
+            templates.push({ name: nameInput, exercises: exArray });
             localStorage.setItem('workoutTemplates', JSON.stringify(templates));
             location.reload();
         }
@@ -86,21 +90,26 @@
         function renderTemplates() {
             const list = document.getElementById('templateList');
             const select = document.getElementById('tplSelect');
-            templates.forEach((t, i) => {
+            list.innerHTML = "";
+            select.innerHTML = '<option value="">Select a Template...</option>';
+            
+            templates.forEach((t) => {
                 list.innerHTML += `<span class="template-tag">${t.name}</span> `;
                 select.innerHTML += `<option value="${t.name}">${t.name}</option>`;
             });
         }
 
         function startSession() {
-            const name = document.getElementById('tplSelect').value;
-            if (!name) return;
-            const tpl = templates.find(t => t.name === name);
+            const selectedName = document.getElementById('tplSelect').value;
+            if (!selectedName) return alert("Select a template first!");
+            
+            const tpl = templates.find(t => t.name === selectedName);
             activeSessionData = { 
                 name: tpl.name, 
                 date: new Date().toLocaleDateString('en-GB'),
                 exercises: tpl.exercises.map(name => ({ name, sets: [] })) 
             };
+            
             document.getElementById('setup-section').style.display = 'none';
             document.getElementById('active-session').style.display = 'block';
             document.getElementById('currentSessionTitle').innerText = tpl.name;
@@ -121,7 +130,7 @@
                             </div>
                         `).join('')}
                     </div>
-                    <button class="btn-outline" style="width:auto; padding: 5px 15px;" onclick="addSet(${exIdx})">+ Add Set</button>
+                    <button class="btn-outline" style="width:auto; padding: 5px 15px; font-size:14px;" onclick="addSet(${exIdx})">+ Add Set</button>
                 </div>
             `).join('');
         }
@@ -141,6 +150,9 @@
         }
 
         function finishSession() {
+            if (activeSessionData.exercises.every(ex => ex.sets.length === 0)) {
+                if (!confirm("No sets recorded. Save anyway?")) return;
+            }
             history.unshift(activeSessionData);
             localStorage.setItem('workoutHistory', JSON.stringify(history));
             location.reload();
@@ -149,33 +161,49 @@
         function filterHistoryByTemplate() {
             const selectedName = document.getElementById('tplSelect').value;
             if (!selectedName) return;
-            const filtered = history.filter(s => s.name === selectedName);
-            document.getElementById('historyHeader').innerText = `History: ${selectedName}`;
+            
+            // Flexible matching (case and space insensitive)
+            const filtered = history.filter(s => 
+                s.name.trim().toLowerCase() === selectedName.trim().toLowerCase()
+            );
+            
+            document.getElementById('historyHeader').innerHTML = `History: ${selectedName} <span class="badge">(Filtered)</span>`;
             renderHistory(filtered);
         }
 
         function renderHistory(dataToRender = history) {
-            if (dataToRender === history) document.getElementById('historyHeader').innerText = "Past Sessions";
+            if (dataToRender === history) {
+                document.getElementById('historyHeader').innerText = "Past Sessions";
+            }
             const log = document.getElementById('historyLog');
-            if (dataToRender.length === 0) { log.innerHTML = "<p style='color:#999;'>No history found.</p>"; return; }
+            if (dataToRender.length === 0) { 
+                log.innerHTML = "<p style='color:#999; padding:20px; text-align:center;'>No history found.</p>"; 
+                return; 
+            }
             
             log.innerHTML = dataToRender.map((s, i) => `
                 <div class="card history-item">
-                    <strong>Date: ${s.date}</strong><br>
-                    <strong>${s.name}</strong>
+                    <div style="display:flex; justify-content:space-between; align-items:start;">
+                        <div>
+                            <small style="color:var(--grey)">${s.date}</small><br>
+                            <strong style="font-size:1.1em">${s.name}</strong>
+                        </div>
+                        <button class="btn-danger" style="margin-top:0" onclick="deleteSession(${i})">Delete</button>
+                    </div>
                     ${s.exercises.map(ex => `
                         <div style="margin-top:10px;">
                             <strong>* ${ex.name}</strong>
-                            ${ex.sets.map((r, si) => `<div style="font-size:14px; margin-left:10px;">- set ${si+1}: ${r}</div>`).join('')}
+                            ${ex.sets.map((r, si) => `
+                                <div style="font-size:14px; margin-left:10px; color:#555;">- set ${si+1}: ${r || 0} reps</div>
+                            `).join('')}
                         </div>
                     `).join('')}
-                    <button class="btn-danger" onclick="deleteSession(${i})">Delete</button>
                 </div>
             `).join('');
         }
 
         function deleteSession(idx) {
-            if(confirm("Delete this session?")) {
+            if(confirm("Delete this session from history?")) {
                 history.splice(idx, 1);
                 localStorage.setItem('workoutHistory', JSON.stringify(history));
                 renderHistory();
@@ -187,7 +215,7 @@
             const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
             const a = document.createElement('a');
             a.href = URL.createObjectURL(blob);
-            a.download = `workout_backup_${new Date().toISOString().split('T')[0]}.json`;
+            a.download = `training_backup_${new Date().toISOString().split('T')[0]}.json`;
             a.click();
         }
 
@@ -198,19 +226,29 @@
             reader.onload = function(e) {
                 try {
                     const data = JSON.parse(e.target.result);
-                    localStorage.setItem('workoutTemplates', JSON.stringify(data.templates));
-                    localStorage.setItem('workoutHistory', JSON.stringify(data.history));
-                    location.reload();
-                } catch (err) { alert("Invalid file."); }
+                    if (data.templates && data.history) {
+                        localStorage.setItem('workoutTemplates', JSON.stringify(data.templates));
+                        localStorage.setItem('workoutHistory', JSON.stringify(data.history));
+                        alert("Backup Restored!");
+                        location.reload();
+                    } else { throw new Error(); }
+                } catch (err) { alert("Invalid backup file."); }
             };
             reader.readAsText(file);
         }
 
         function clearFullCache() {
-            if(confirm("Wipe EVERYTHING?")) { localStorage.clear(); location.reload(); }
+            if(confirm("DANGER: This wipes ALL templates and history. Proceed?")) {
+                localStorage.clear();
+                location.reload();
+            }
         }
 
-        function cancelSession() { location.reload(); }
+        function cancelSession() {
+            if(confirm("Discard current session?")) location.reload();
+        }
+
+        // Initial Load
         renderTemplates();
         renderHistory();
     </script>
