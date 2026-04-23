@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Basic Training Tracker</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; background: #f4f4f9; }
+        .card { background: white; padding: 15px; border-radius: 8px; margin-bottom: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        h2 { color: #333; }
+        input, button { padding: 10px; margin: 5px 0; width: 100%; box-sizing: border-box; }
+        button { background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        .exercise-row { border-bottom: 1px solid #eee; padding: 10px 0; }
+        .history { font-size: 0.9em; color: #666; }
+    </style>
+</head>
+<body>
+
+<h2>New Workout Session</h2>
+<div class="card">
+    <input type="text" id="sessionName" placeholder="Session Name (e.g., Leg Day)">
+    <input type="text" id="exerciseInput" placeholder="Exercise Name">
+    <button onclick="addExerciseToTemplate()">Add Exercise to Session</button>
+    <div id="currentTemplateList"></div>
+    <button style="background: #28a745;" onclick="saveSession()">Finish & Save Session</button>
+</div>
+
+<h2>Past Sessions</h2>
+<div id="historyLog"></div>
+
+<script>
+    let currentExercises = [];
+    let history = JSON.parse(localStorage.getItem('workoutHistory')) || [];
+
+    function addExerciseToTemplate() {
+        const name = document.getElementById('exerciseInput').value;
+        if (!name) return;
+        const ex = { name: name, sets: 0, reps: 0 };
+        currentExercises.push(ex);
+        renderCurrentTemplate();
+        document.getElementById('exerciseInput').value = '';
+    }
+
+    function renderCurrentTemplate() {
+        const container = document.getElementById('currentTemplateList');
+        container.innerHTML = currentExercises.map((ex, index) => `
+                <div class="exercise-row">
+                    <strong>${ex.name}</strong>
+                    <input type="number" placeholder="Sets" onchange="updateEx(${index}, 'sets', this.value)">
+                    <input type="number" placeholder="Reps" onchange="updateEx(${index}, 'reps', this.value)">
+                </div>
+            `).join('');
+    }
+
+    function updateEx(index, field, value) {
+        currentExercises[index][field] = value;
+    }
+
+    function saveSession() {
+        const name = document.getElementById('sessionName').value || "Unnamed Session";
+        const session = {
+            name: name,
+            date: new Date().toLocaleDateString(),
+            exercises: [...currentExercises]
+        };
+        history.unshift(session);
+        localStorage.setItem('workoutHistory', JSON.stringify(history));
+        currentExercises = [];
+        document.getElementById('sessionName').value = '';
+        renderCurrentTemplate();
+        renderHistory();
+    }
+
+    function renderHistory() {
+        const container = document.getElementById('historyLog');
+        container.innerHTML = history.map(session => `
+                <div class="card history">
+                    <strong>${session.date} - ${session.name}</strong>
+                    <ul>
+                        ${session.exercises.map(ex => `<li>${ex.name}: ${ex.sets} sets x ${ex.reps} reps</li>`).join('')}
+                    </ul>
+                </div>
+            `).join('');
+    }
+
+    renderHistory();
+</script>
+</body>
+</html>
