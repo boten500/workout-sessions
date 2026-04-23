@@ -25,7 +25,6 @@
         .danger-zone { margin-top: 50px; border-top: 2px dashed #ccc; padding-top: 20px; }
         #fileInput { display: none; }
         .flex-group { display: flex; gap: 10px; }
-        .badge { font-size: 12px; color: var(--info); font-weight: normal; }
     </style>
 </head>
 <body>
@@ -71,7 +70,6 @@
     </div>
 
     <script>
-        // Load data from LocalStorage
         let templates = JSON.parse(localStorage.getItem('workoutTemplates')) || [];
         let history = JSON.parse(localStorage.getItem('workoutHistory')) || [];
         let activeSessionData = null;
@@ -80,7 +78,6 @@
             const nameInput = document.getElementById('tplName').value.trim();
             const exStr = document.getElementById('tplExercises').value.trim();
             if (!nameInput || !exStr) return;
-            
             const exArray = exStr.split(',').map(s => s.trim()).filter(s => s !== "");
             templates.push({ name: nameInput, exercises: exArray });
             localStorage.setItem('workoutTemplates', JSON.stringify(templates));
@@ -92,7 +89,6 @@
             const select = document.getElementById('tplSelect');
             list.innerHTML = "";
             select.innerHTML = '<option value="">Select a Template...</option>';
-            
             templates.forEach((t) => {
                 list.innerHTML += `<span class="template-tag">${t.name}</span> `;
                 select.innerHTML += `<option value="${t.name}">${t.name}</option>`;
@@ -101,15 +97,14 @@
 
         function startSession() {
             const selectedName = document.getElementById('tplSelect').value;
-            if (!selectedName) return alert("Select a template first!");
-            
+            if (!selectedName) return alert("Select a template!");
             const tpl = templates.find(t => t.name === selectedName);
             activeSessionData = { 
+                id: Date.now(), // Unique ID for filtering/deleting correctly
                 name: tpl.name, 
                 date: new Date().toLocaleDateString('en-GB'),
                 exercises: tpl.exercises.map(name => ({ name, sets: [] })) 
             };
-            
             document.getElementById('setup-section').style.display = 'none';
             document.getElementById('active-session').style.display = 'block';
             document.getElementById('currentSessionTitle').innerText = tpl.name;
@@ -125,34 +120,21 @@
                         ${ex.sets.map((val, setIdx) => `
                             <div class="set-row">
                                 <span>Set ${setIdx + 1}:</span>
-                                <input type="number" value="${val}" onchange="updateSet(${exIdx}, ${setIdx}, this.value)" placeholder="Reps">
+                                <input type="number" value="${val}" onchange="updateSet(${exIdx}, ${setIdx}, this.value)">
                                 <button class="btn-danger" style="margin:0; padding:5px 10px;" onclick="removeSet(${exIdx}, ${setIdx})">✕</button>
                             </div>
                         `).join('')}
                     </div>
-                    <button class="btn-outline" style="width:auto; padding: 5px 15px; font-size:14px;" onclick="addSet(${exIdx})">+ Add Set</button>
+                    <button class="btn-outline" style="width:auto; padding: 5px 15px;" onclick="addSet(${exIdx})">+ Add Set</button>
                 </div>
             `).join('');
         }
 
-        function addSet(exIdx) {
-            activeSessionData.exercises[exIdx].sets.push("");
-            renderActiveSession();
-        }
-
-        function removeSet(exIdx, setIdx) {
-            activeSessionData.exercises[exIdx].sets.splice(setIdx, 1);
-            renderActiveSession();
-        }
-
-        function updateSet(exIdx, setIdx, val) {
-            activeSessionData.exercises[exIdx].sets[setIdx] = val;
-        }
+        function addSet(exIdx) { activeSessionData.exercises[exIdx].sets.push(""); renderActiveSession(); }
+        function removeSet(exIdx, setIdx) { activeSessionData.exercises[exIdx].sets.splice(setIdx, 1); renderActiveSession(); }
+        function updateSet(exIdx, setIdx, val) { activeSessionData.exercises[exIdx].sets[setIdx] = val; }
 
         function finishSession() {
-            if (activeSessionData.exercises.every(ex => ex.sets.length === 0)) {
-                if (!confirm("No sets recorded. Save anyway?")) return;
-            }
             history.unshift(activeSessionData);
             localStorage.setItem('workoutHistory', JSON.stringify(history));
             location.reload();
@@ -161,94 +143,64 @@
         function filterHistoryByTemplate() {
             const selectedName = document.getElementById('tplSelect').value;
             if (!selectedName) return;
-            
-            // Flexible matching (case and space insensitive)
-            const filtered = history.filter(s => 
-                s.name.trim().toLowerCase() === selectedName.trim().toLowerCase()
-            );
-            
-            document.getElementById('historyHeader').innerHTML = `History: ${selectedName} <span class="badge">(Filtered)</span>`;
+            const filtered = history.filter(s => s.name.trim().toLowerCase() === selectedName.trim().toLowerCase());
+            document.getElementById('historyHeader').innerHTML = `History: ${selectedName}`;
             renderHistory(filtered);
         }
 
         function renderHistory(dataToRender = history) {
-            if (dataToRender === history) {
-                document.getElementById('historyHeader').innerText = "Past Sessions";
-            }
             const log = document.getElementById('historyLog');
-            if (dataToRender.length === 0) { 
-                log.innerHTML = "<p style='color:#999; padding:20px; text-align:center;'>No history found.</p>"; 
-                return; 
-            }
+            if (dataToRender.length === 0) { log.innerHTML = "<p style='color:#999; text-align:center;'>No history.</p>"; return; }
             
-            log.innerHTML = dataToRender.map((s, i) => `
+            log.innerHTML = dataToRender.map((s) => `
                 <div class="card history-item">
                     <div style="display:flex; justify-content:space-between; align-items:start;">
                         <div>
                             <small style="color:var(--grey)">${s.date}</small><br>
-                            <strong style="font-size:1.1em">${s.name}</strong>
+                            <strong>${s.name}</strong>
                         </div>
-                        <button class="btn-danger" style="margin-top:0" onclick="deleteSession(${i})">Delete</button>
+                        <button class="btn-danger" style="margin-top:0" onclick="deleteSession(${s.id || 0}, '${s.date}')">Delete</button>
                     </div>
                     ${s.exercises.map(ex => `
                         <div style="margin-top:10px;">
                             <strong>* ${ex.name}</strong>
-                            ${ex.sets.map((r, si) => `
-                                <div style="font-size:14px; margin-left:10px; color:#555;">- set ${si+1}: ${r || 0} reps</div>
-                            `).join('')}
+                            ${ex.sets.map((r, si) => `<div style="font-size:14px; margin-left:10px;">- set ${si+1}: ${r || 0}</div>`).join('')}
                         </div>
                     `).join('')}
                 </div>
             `).join('');
         }
 
-        function deleteSession(idx) {
-            if(confirm("Delete this session from history?")) {
-                history.splice(idx, 1);
+        function deleteSession(id, date) {
+            if(confirm(`Delete session from ${date}?`)) {
+                // Find by ID or fallback to date for older sessions
+                history = history.filter(s => (s.id !== id) || (s.id === undefined && s.date !== date));
                 localStorage.setItem('workoutHistory', JSON.stringify(history));
-                renderHistory();
-            }
-        }
-
-        function exportData() {
-            const data = { templates, history };
-            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-            const a = document.createElement('a');
-            a.href = URL.createObjectURL(blob);
-            a.download = `training_backup_${new Date().toISOString().split('T')[0]}.json`;
-            a.click();
-        }
-
-        function importData(event) {
-            const file = event.target.files[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                try {
-                    const data = JSON.parse(e.target.result);
-                    if (data.templates && data.history) {
-                        localStorage.setItem('workoutTemplates', JSON.stringify(data.templates));
-                        localStorage.setItem('workoutHistory', JSON.stringify(data.history));
-                        alert("Backup Restored!");
-                        location.reload();
-                    } else { throw new Error(); }
-                } catch (err) { alert("Invalid backup file."); }
-            };
-            reader.readAsText(file);
-        }
-
-        function clearFullCache() {
-            if(confirm("DANGER: This wipes ALL templates and history. Proceed?")) {
-                localStorage.clear();
                 location.reload();
             }
         }
 
-        function cancelSession() {
-            if(confirm("Discard current session?")) location.reload();
+        function exportData() {
+            const blob = new Blob([JSON.stringify({ templates, history }, null, 2)], { type: 'application/json' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = `backup.json`;
+            a.click();
         }
 
-        // Initial Load
+        function importData(event) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const data = JSON.parse(e.target.result);
+                localStorage.setItem('workoutTemplates', JSON.stringify(data.templates));
+                localStorage.setItem('workoutHistory', JSON.stringify(data.history));
+                location.reload();
+            };
+            reader.readAsText(event.target.files[0]);
+        }
+
+        function clearFullCache() { if(confirm("Wipe all?")) { localStorage.clear(); location.reload(); } }
+        function cancelSession() { location.reload(); }
         renderTemplates();
         renderHistory();
     </script>
