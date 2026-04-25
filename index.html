@@ -18,11 +18,11 @@
         .exercise-block { border-left: 4px solid var(--primary); padding-left: 10px; margin-bottom: 20px; }
         .set-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
         .set-row span { min-width: 50px; font-weight: bold; font-size: 14px; }
-        .video-container { width: 100%; aspect-ratio: 16/9; margin: 10px 0; display: none; }
-        iframe { width: 100%; height: 100%; border-radius: 8px; border: none; }
+        .set-row input { flex-grow: 1; }
         .template-tag-container { display: flex; align-items: center; background: #e9ecef; border-radius: 10px; padding: 4px 10px; margin: 4px; display: inline-flex; gap: 8px; }
         .template-tag { font-size: 12px; text-transform: uppercase; font-weight: bold; cursor: pointer; color: var(--dark); }
         .flex-group { display: flex; gap: 10px; }
+        .history-item { border-bottom: 1px solid #eee; padding-bottom: 15px; }
         #fileInput { display: none; }
     </style>
 </head>
@@ -75,7 +75,7 @@
         let isEditingWorkout = false;
         let editTemplateIdx = null;
 
-        // CRITICAL FIX: Ensures old strings are treated as names
+        // Compatibility checks for old data
         function getExName(ex) {
             if (typeof ex === 'string') return ex;
             return ex.name || "Unknown Exercise";
@@ -146,7 +146,9 @@
             const tpl = templates.find(t => t.name === sel);
             isEditingWorkout = false;
             activeSessionData = { 
-                id: Date.now(), name: tpl.name, date: new Date().toLocaleDateString('en-GB'),
+                id: Date.now(), 
+                name: tpl.name, 
+                date: new Date().toLocaleDateString('en-GB'),
                 exercises: tpl.exercises.map(ex => ({ 
                     name: getExName(ex), 
                     video: getExVideo(ex), 
@@ -158,11 +160,26 @@
 
         function renderActive() {
             const area = document.getElementById('exerciseArea');
-            area.innerHTML = activeSessionData.exercises.map((ex, exIdx) => `
+            area.innerHTML = activeSessionData.exercises.map((ex, exIdx) => {
+                
+                // Convert embed links back to safe standard URLs for the new tab
+                let safeLink = ex.video;
+                if (safeLink) {
+                    if (safeLink.includes('drive.google.com/embed?id=')) {
+                        safeLink = `https://drive.google.com/file/d/${safeLink.split('embed?id=')[1]}/view`;
+                    } else if (safeLink.includes('youtube.com/embed/')) {
+                        safeLink = `https://www.youtube.com/watch?v=${safeLink.split('embed/')[1]}`;
+                    }
+                }
+
+                return `
                 <div class="exercise-block">
                     <h3>* ${ex.name}</h3>
-                    ${ex.video ? `<button class="btn-info" onclick="toggleVideo('vid-${exIdx}')">📺 Watch Form</button>
-                    <div id="vid-${exIdx}" class="video-container"><iframe src="${ex.video}" allowfullscreen></iframe></div>` : ''}
+                    ${ex.video ? `
+                        <button class="btn-info" style="width: auto;" onclick="window.open('${safeLink}', '_blank')">
+                            ↗️ Watch Form Video
+                        </button>
+                    ` : ''}
                     <div id="sets-${exIdx}">
                         ${ex.sets.map((v, sIdx) => `
                             <div class="set-row">
@@ -172,11 +189,13 @@
                             </div>`).join('')}
                     </div>
                     <button class="btn-outline" style="width:auto; padding:5px 15px;" onclick="addSet(${exIdx})">+ Set</button>
-                </div>`).join('');
+                </div>`;
+            }).join('');
         }
 
         function renderHistory(data = history) {
             const log = document.getElementById('historyLog');
+            if (data.length === 0) { log.innerHTML = "<p style='color:#999;'>No history available.</p>"; return; }
             log.innerHTML = data.map(s => `
                 <div class="card history-item">
                     <div style="display:flex; justify-content:space-between;">
@@ -196,6 +215,7 @@
         function addSet(i) { activeSessionData.exercises[i].sets.push(""); renderActive(); }
         function removeSet(i, s) { activeSessionData.exercises[i].sets.splice(s, 1); renderActive(); }
         function updateSet(i, s, v) { activeSessionData.exercises[i].sets[s] = v; }
+        
         function finishSession() {
             if (isEditingWorkout) {
                 const i = history.findIndex(s => s.id === activeSessionData.id);
@@ -204,23 +224,29 @@
             localStorage.setItem('workoutHistory', JSON.stringify(history));
             location.reload();
         }
+
         function editSession(id) {
             isEditingWorkout = true;
             activeSessionData = JSON.parse(JSON.stringify(history.find(s => s.id === id)));
             showUI(`Edit: ${activeSessionData.name}`);
             document.getElementById('saveBtn').innerText = "Update Record";
         }
+
         function showUI(title) {
             document.getElementById('setup-section').style.display = 'none';
             document.getElementById('active-session').style.display = 'block';
             document.getElementById('currentSessionTitle').innerText = title;
             renderActive();
         }
-        function toggleVideo(id) {
-            const el = document.getElementById(id);
-            el.style.display = el.style.display === 'block' ? 'none' : 'block';
+
+        function deleteTemplate(idx) { 
+            if(confirm("Delete this template?")) { 
+                templates.splice(idx, 1); 
+                localStorage.setItem('workoutTemplates', JSON.stringify(templates)); 
+                location.reload(); 
+            } 
         }
-        function deleteTemplate(idx) { if(confirm("Delete?")) { templates.splice(idx, 1); localStorage.setItem('workoutTemplates', JSON.stringify(templates)); location.reload(); } }
+
         function editTemplate(idx) {
             const t = templates[idx];
             document.getElementById('tplName').value = t.name;
@@ -231,23 +257,54 @@
             }).join(', ');
             editTemplateIdx = idx;
             document.getElementById('tplBtn').innerText = "Update Template";
+            document.getElementById('tplBtn').style.background = "var(--warning)";
+            document.getElementById('tplBtn').style.color = "#000";
             window.scrollTo(0,0);
         }
-        function deleteSession(id) { if(confirm("Delete?")) { history = history.filter(s => s.id !== id); localStorage.setItem('workoutHistory', JSON.stringify(history)); location.reload(); }}
-        function filterHistoryByTemplate() { renderHistory(history.filter(s => s.name === document.getElementById('tplSelect').value)); }
-        function exportData() { const blob = new Blob([JSON.stringify({ templates, history })], { type: 'application/json' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'backup.json'; a.click(); }
+
+        function deleteSession(id) { 
+            if(confirm("Delete this session record?")) { 
+                history = history.filter(s => s.id !== id); 
+                localStorage.setItem('workoutHistory', JSON.stringify(history)); 
+                location.reload(); 
+            }
+        }
+
+        function filterHistoryByTemplate() { 
+            const sel = document.getElementById('tplSelect').value.trim().toLowerCase();
+            if (!sel) return;
+            renderHistory(history.filter(s => s.name.trim().toLowerCase() === sel)); 
+        }
+
+        function exportData() { 
+            const blob = new Blob([JSON.stringify({ templates, history }, null, 2)], { type: 'application/json' }); 
+            const a = document.createElement('a'); 
+            a.href = URL.createObjectURL(blob); 
+            a.download = `training_backup_${new Date().toISOString().split('T')[0]}.json`; 
+            a.click(); 
+        }
+
         function importData(e) {
             const reader = new FileReader();
             reader.onload = (f) => {
-                const d = JSON.parse(f.target.result);
-                localStorage.setItem('workoutTemplates', JSON.stringify(d.templates));
-                localStorage.setItem('workoutHistory', JSON.stringify(d.history));
-                location.reload();
+                try {
+                    const d = JSON.parse(f.target.result);
+                    if(d.templates && d.history) {
+                        localStorage.setItem('workoutTemplates', JSON.stringify(d.templates));
+                        localStorage.setItem('workoutHistory', JSON.stringify(d.history));
+                        location.reload();
+                    }
+                } catch (err) {
+                    alert("Invalid backup file.");
+                }
             };
             reader.readAsText(e.target.files[0]);
         }
-        function clearFullCache() { if(confirm("Wipe all?")) { localStorage.clear(); location.reload(); } }
+
+        function clearFullCache() { if(confirm("Wipe all data permanently?")) { localStorage.clear(); location.reload(); } }
         function cancelSession() { location.reload(); }
+
+        // Initialize App
         renderTemplates();
         renderHistory();
     </script>
