@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Calisthenics Tracker</title>
+    <title>Calisthenics Tracker Pro</title>
     <style>
         :root { --primary: #007bff; --danger: #dc3545; --success: #28a745; --dark: #343a40; --info: #17a2b8; --grey: #6c757d; --warning: #ffc107; }
         body { font-family: -apple-system, sans-serif; padding: 15px; background: #f8f9fa; color: #333; padding-bottom: 100px; }
@@ -12,62 +12,57 @@
         input, button, select { padding: 12px; margin: 5px 0; width: 100%; border-radius: 8px; border: 1px solid #ddd; box-sizing: border-box; font-size: 16px; }
         button { background: var(--primary); color: white; border: none; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; }
         .btn-outline { background: transparent; color: var(--primary); border: 1px solid var(--primary); }
-        .btn-danger { background: var(--danger); font-size: 12px; padding: 8px; width: auto; margin-top: 0; }
-        .btn-grey { background: var(--grey); font-size: 12px; padding: 6px 12px; width: auto; }
+        .btn-danger { background: var(--danger); font-size: 12px; padding: 8px; width: auto; margin: 0; }
         .btn-warning { background: var(--warning); color: #212529; font-size: 12px; padding: 8px; width: auto; }
-        .btn-info { background: var(--info); }
+        .btn-info { background: var(--info); font-size: 13px; padding: 6px; width: auto; margin: 5px 0; }
         .exercise-block { border-left: 4px solid var(--primary); padding-left: 10px; margin-bottom: 20px; }
         .set-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
-        .set-row span { min-width: 60px; font-weight: bold; font-size: 14px; }
-        .set-row input { flex-grow: 1; }
+        .set-row span { min-width: 50px; font-weight: bold; font-size: 14px; }
+        .video-container { width: 100%; aspect-ratio: 16/9; margin: 10px 0; display: none; }
+        iframe { width: 100%; height: 100%; border-radius: 8px; border: none; }
         .history-item { border-bottom: 1px solid #eee; padding-bottom: 15px; }
         .template-tag { font-size: 11px; background: #e9ecef; padding: 4px 8px; border-radius: 10px; display: inline-block; margin: 2px; text-transform: uppercase; }
-        .backup-zone { margin-top: 30px; display: flex; gap: 10px; }
-        .danger-zone { margin-top: 50px; border-top: 2px dashed #ccc; padding-top: 20px; }
-        #fileInput { display: none; }
         .flex-group { display: flex; gap: 10px; }
+        #fileInput { display: none; }
     </style>
 </head>
 <body>
 
     <div id="setup-section">
-        <h2>1. Manage Templates</h2>
+        <h2>1. Templates</h2>
         <div class="card">
-            <input type="text" id="tplName" placeholder="Template Name (e.g. OAPU)">
-            <input type="text" id="tplExercises" placeholder="Exercises (comma separated)">
+            <input type="text" id="tplName" placeholder="Session Name (e.g. OAPU Day)">
+            <input type="text" id="tplExercises" placeholder="Ex1 [Link], Ex2 [Link]">
+            <p style="font-size: 11px; color: #666; margin: 0;">Tip: Add links in brackets [ ] for video tutorials.</p>
             <button onclick="saveTemplate()">Create Template</button>
             <div id="templateList" style="margin-top:10px;"></div>
         </div>
 
-        <h2>2. Start Session</h2>
+        <h2>2. Workout</h2>
         <div class="card">
-            <select id="tplSelect"><option value="">Select a Template...</option></select>
+            <select id="tplSelect"><option value="">Choose Template...</option></select>
             <div class="flex-group">
-                <button class="btn-outline" onclick="startSession()">Start Workout</button>
-                <button class="btn-info" onclick="filterHistoryByTemplate()">View Past Runs</button>
+                <button class="btn-outline" onclick="startSession()">Start</button>
+                <button class="btn-info" onclick="filterHistoryByTemplate()">Filter History</button>
             </div>
             <button class="btn-grey" style="width:100%; margin-top:10px;" onclick="renderHistory()">Show All History</button>
         </div>
     </div>
 
     <div id="active-session" style="display:none;">
-        <h2 id="currentSessionTitle">Workout</h2>
+        <h2 id="currentSessionTitle"></h2>
         <div id="exerciseArea"></div>
-        <button id="saveBtn" onclick="finishSession()" style="background: var(--success);">Finish & Save Session</button>
-        <button class="btn-outline" onclick="cancelSession()" style="margin-top:10px;">Cancel (Discard)</button>
+        <button id="saveBtn" onclick="finishSession()" style="background: var(--success); margin-top: 20px;">Save Session</button>
+        <button class="btn-outline" onclick="cancelSession()" style="margin-top:10px;">Discard</button>
     </div>
 
-    <h2 id="historyHeader">Past Sessions</h2>
+    <h2 id="historyHeader">History</h2>
     <div id="historyLog"></div>
 
-    <div class="backup-zone">
+    <div class="flex-group" style="margin-top: 30px;">
         <button class="btn-info" style="flex:1" onclick="exportData()">💾 Export</button>
         <button class="btn-info" style="flex:1" onclick="document.getElementById('fileInput').click()">📂 Import</button>
         <input type="file" id="fileInput" accept=".json" onchange="importData(event)">
-    </div>
-
-    <div class="danger-zone">
-        <button class="btn-danger" style="width: 100%; opacity: 0.7;" onclick="clearFullCache()">Reset All Data</button>
     </div>
 
     <script>
@@ -76,154 +71,143 @@
         let activeSessionData = null;
         let isEditing = false;
 
+        function formatVideoLink(link) {
+            if (!link) return null;
+            if (link.includes('drive.google.com')) {
+                const idMatch = link.match(/\/d\/(.+?)\//) || link.match(/id=(.+?)(&|$)/);
+                return idMatch ? `https://drive.google.com/embed?id=${idMatch[1]}` : link;
+            }
+            if (link.includes('youtube.com') || link.includes('youtu.be')) {
+                const id = link.split('v=')[1]?.split('&')[0] || link.split('/').pop().split('?')[0];
+                return `https://www.youtube.com/embed/${id}`;
+            }
+            return link;
+        }
+
         function saveTemplate() {
             const nameInput = document.getElementById('tplName').value.trim();
             const exStr = document.getElementById('tplExercises').value.trim();
             if (!nameInput || !exStr) return;
-            const exArray = exStr.split(',').map(s => s.trim()).filter(s => s !== "");
+            
+            // Regex to find: Exercise Name [Link]
+            const exArray = exStr.split(',').map(item => {
+                const parts = item.match(/(.+?)\s*\[(.*?)\]/) || [null, item.trim(), ""];
+                return { name: parts[1], video: formatVideoLink(parts[2]) };
+            });
+
             templates.push({ name: nameInput, exercises: exArray });
             localStorage.setItem('workoutTemplates', JSON.stringify(templates));
             location.reload();
         }
 
         function renderTemplates() {
-            const list = document.getElementById('templateList');
             const select = document.getElementById('tplSelect');
-            list.innerHTML = "";
-            select.innerHTML = '<option value="">Select a Template...</option>';
-            templates.forEach((t) => {
+            const list = document.getElementById('templateList');
+            templates.forEach(t => {
                 list.innerHTML += `<span class="template-tag">${t.name}</span> `;
                 select.innerHTML += `<option value="${t.name}">${t.name}</option>`;
             });
         }
 
         function startSession() {
-            const selectedName = document.getElementById('tplSelect').value;
-            if (!selectedName) return alert("Select a template!");
-            const tpl = templates.find(t => t.name === selectedName);
+            const sel = document.getElementById('tplSelect').value;
+            if (!sel) return;
+            const tpl = templates.find(t => t.name === sel);
             isEditing = false;
             activeSessionData = { 
-                id: Date.now(),
-                name: tpl.name, 
-                date: new Date().toLocaleDateString('en-GB'),
-                exercises: tpl.exercises.map(name => ({ name, sets: [] })) 
+                id: Date.now(), name: tpl.name, date: new Date().toLocaleDateString('en-GB'),
+                exercises: tpl.exercises.map(ex => ({ ...ex, sets: [] })) 
             };
-            showWorkoutUI(tpl.name);
+            showUI(tpl.name);
         }
 
-        function editSession(id) {
-            const sessionToEdit = history.find(s => s.id === id);
-            if (!sessionToEdit) return;
-            isEditing = true;
-            // Create a deep copy to avoid modifying history until saved
-            activeSessionData = JSON.parse(JSON.stringify(sessionToEdit));
-            showWorkoutUI(`Editing: ${activeSessionData.name}`);
-            document.getElementById('saveBtn').innerText = "Update & Save Changes";
-        }
-
-        function showWorkoutUI(title) {
+        function showUI(title) {
             document.getElementById('setup-section').style.display = 'none';
             document.getElementById('active-session').style.display = 'block';
             document.getElementById('currentSessionTitle').innerText = title;
-            renderActiveSession();
+            renderActive();
         }
 
-        function renderActiveSession() {
+        function toggleVideo(id) {
+            const el = document.getElementById(id);
+            el.style.display = el.style.display === 'block' ? 'none' : 'block';
+        }
+
+        function renderActive() {
             const area = document.getElementById('exerciseArea');
             area.innerHTML = activeSessionData.exercises.map((ex, exIdx) => `
                 <div class="exercise-block">
                     <h3>* ${ex.name}</h3>
-                    <div id="sets-ex-${exIdx}">
-                        ${ex.sets.map((val, setIdx) => `
+                    ${ex.video ? `<button class="btn-info" onclick="toggleVideo('vid-${exIdx}')">📺 Watch Form</button>
+                    <div id="vid-${exIdx}" class="video-container"><iframe src="${ex.video}" allowfullscreen></iframe></div>` : ''}
+                    <div id="sets-${exIdx}">
+                        ${ex.sets.map((v, sIdx) => `
                             <div class="set-row">
-                                <span>Set ${setIdx + 1}:</span>
-                                <input type="text" value="${val}" onchange="updateSet(${exIdx}, ${setIdx}, this.value)" placeholder="e.g. 10 or 15s">
-                                <button class="btn-danger" style="margin:0; padding:5px 10px;" onclick="removeSet(${exIdx}, ${setIdx})">✕</button>
-                            </div>
-                        `).join('')}
+                                <span>Set ${sIdx + 1}:</span>
+                                <input type="text" value="${v}" onchange="updateSet(${exIdx}, ${sIdx}, this.value)">
+                                <button class="btn-danger" onclick="removeSet(${exIdx}, ${sIdx})">✕</button>
+                            </div>`).join('')}
                     </div>
-                    <button class="btn-outline" style="width:auto; padding: 5px 15px;" onclick="addSet(${exIdx})">+ Add Set</button>
-                </div>
-            `).join('');
+                    <button class="btn-outline" style="width:auto; padding:5px 15px;" onclick="addSet(${exIdx})">+ Set</button>
+                </div>`).join('');
         }
 
-        function addSet(exIdx) { activeSessionData.exercises[exIdx].sets.push(""); renderActiveSession(); }
-        function removeSet(exIdx, setIdx) { activeSessionData.exercises[exIdx].sets.splice(setIdx, 1); renderActiveSession(); }
-        function updateSet(exIdx, setIdx, val) { activeSessionData.exercises[exIdx].sets[setIdx] = val; }
+        function addSet(i) { activeSessionData.exercises[i].sets.push(""); renderActive(); }
+        function removeSet(i, s) { activeSessionData.exercises[i].sets.splice(s, 1); renderActive(); }
+        function updateSet(i, s, v) { activeSessionData.exercises[i].sets[s] = v; }
 
         function finishSession() {
             if (isEditing) {
-                // Find index of original session and replace it
-                const index = history.findIndex(s => s.id === activeSessionData.id);
-                if (index !== -1) history[index] = activeSessionData;
-            } else {
-                history.unshift(activeSessionData);
-            }
+                const i = history.findIndex(s => s.id === activeSessionData.id);
+                if (i !== -1) history[i] = activeSessionData;
+            } else { history.unshift(activeSessionData); }
             localStorage.setItem('workoutHistory', JSON.stringify(history));
             location.reload();
         }
 
-        function filterHistoryByTemplate() {
-            const selectedName = document.getElementById('tplSelect').value;
-            if (!selectedName) return;
-            const filtered = history.filter(s => s.name.trim().toLowerCase() === selectedName.trim().toLowerCase());
-            document.getElementById('historyHeader').innerHTML = `History: ${selectedName}`;
-            renderHistory(filtered);
+        function editSession(id) {
+            isEditing = true;
+            activeSessionData = JSON.parse(JSON.stringify(history.find(s => s.id === id)));
+            showUI(`Edit: ${activeSessionData.name}`);
+            document.getElementById('saveBtn').innerText = "Update Session";
         }
 
-        function renderHistory(dataToRender = history) {
+        function renderHistory(data = history) {
             const log = document.getElementById('historyLog');
-            if (dataToRender.length === 0) { log.innerHTML = "<p style='color:#999; text-align:center;'>No history.</p>"; return; }
-            
-            log.innerHTML = dataToRender.map((s) => `
+            log.innerHTML = data.map(s => `
                 <div class="card history-item">
-                    <div style="display:flex; justify-content:space-between; align-items:start;">
-                        <div>
-                            <small style="color:var(--grey)">${s.date}</small><br>
-                            <strong>${s.name}</strong>
-                        </div>
+                    <div style="display:flex; justify-content:space-between;">
+                        <div><small>${s.date}</small><br><strong>${s.name}</strong></div>
                         <div class="flex-group">
                             <button class="btn-warning" onclick="editSession(${s.id})">Edit</button>
-                            <button class="btn-danger" onclick="deleteSession(${s.id}, '${s.date}')">Delete</button>
+                            <button class="btn-danger" onclick="deleteSession(${s.id})">Delete</button>
                         </div>
                     </div>
-                    ${s.exercises.map(ex => `
-                        <div style="margin-top:10px;">
-                            <strong>* ${ex.name}</strong>
-                            ${ex.sets.map((r, si) => `<div style="font-size:14px; margin-left:10px; color:#555;">- set ${si+1}: ${r || 0}</div>`).join('')}
-                        </div>
-                    `).join('')}
-                </div>
-            `).join('');
+                    ${s.exercises.map(ex => `<div style="margin-top:8px;"><strong>* ${ex.name}</strong>
+                        ${ex.sets.map((r, i) => `<div style="font-size:13px; margin-left:12px;">- Set ${i+1}: ${r}</div>`).join('')}
+                    </div>`).join('')}
+                </div>`).join('');
         }
 
-        function deleteSession(id, date) {
-            if(confirm(`Delete session from ${date}?`)) {
-                history = history.filter(s => s.id !== id);
-                localStorage.setItem('workoutHistory', JSON.stringify(history));
-                location.reload();
-            }
+        function deleteSession(id) { if(confirm("Delete?")) { history = history.filter(s => s.id !== id); localStorage.setItem('workoutHistory', JSON.stringify(history)); location.reload(); }}
+        function filterHistoryByTemplate() {
+            const sel = document.getElementById('tplSelect').value;
+            renderHistory(history.filter(s => s.name === sel));
         }
-
         function exportData() {
-            const blob = new Blob([JSON.stringify({ templates, history }, null, 2)], { type: 'application/json' });
-            const a = document.createElement('a');
-            a.href = URL.createObjectURL(blob);
-            a.download = `backup.json`;
-            a.click();
+            const blob = new Blob([JSON.stringify({ templates, history })], { type: 'application/json' });
+            const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'backup.json'; a.click();
         }
-
-        function importData(event) {
+        function importData(e) {
             const reader = new FileReader();
-            reader.onload = function(e) {
-                const data = JSON.parse(e.target.result);
-                localStorage.setItem('workoutTemplates', JSON.stringify(data.templates));
-                localStorage.setItem('workoutHistory', JSON.stringify(data.history));
+            reader.onload = (f) => {
+                const d = JSON.parse(f.target.result);
+                localStorage.setItem('workoutTemplates', JSON.stringify(d.templates));
+                localStorage.setItem('workoutHistory', JSON.stringify(d.history));
                 location.reload();
             };
-            reader.readAsText(event.target.files[0]);
+            reader.readAsText(e.target.files[0]);
         }
-
         function clearFullCache() { if(confirm("Wipe all?")) { localStorage.clear(); location.reload(); } }
         function cancelSession() { location.reload(); }
         renderTemplates();
