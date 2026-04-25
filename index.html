@@ -20,8 +20,8 @@
         .set-row span { min-width: 50px; font-weight: bold; font-size: 14px; }
         .video-container { width: 100%; aspect-ratio: 16/9; margin: 10px 0; display: none; }
         iframe { width: 100%; height: 100%; border-radius: 8px; border: none; }
-        .history-item { border-bottom: 1px solid #eee; padding-bottom: 15px; }
-        .template-tag { font-size: 11px; background: #e9ecef; padding: 4px 8px; border-radius: 10px; display: inline-block; margin: 2px; text-transform: uppercase; }
+        .template-tag-container { display: flex; align-items: center; background: #e9ecef; border-radius: 10px; padding: 2px 8px; margin: 4px; display: inline-flex; gap: 5px; }
+        .template-tag { font-size: 11px; text-transform: uppercase; font-weight: bold; cursor: pointer; }
         .flex-group { display: flex; gap: 10px; }
         #fileInput { display: none; }
     </style>
@@ -32,9 +32,8 @@
         <h2>1. Templates</h2>
         <div class="card">
             <input type="text" id="tplName" placeholder="Session Name (e.g. OAPU Day)">
-            <input type="text" id="tplExercises" placeholder="Ex1 [Link], Ex2 [Link]">
-            <p style="font-size: 11px; color: #666; margin: 0;">Tip: Add links in brackets [ ] for video tutorials.</p>
-            <button onclick="saveTemplate()">Create Template</button>
+            <input type="text" id="tplExercises" placeholder="Ex1 [Link], Ex2, Ex3 [Link]">
+            <button id="tplBtn" onclick="saveTemplate()">Create Template</button>
             <div id="templateList" style="margin-top:10px;"></div>
         </div>
 
@@ -65,14 +64,20 @@
         <input type="file" id="fileInput" accept=".json" onchange="importData(event)">
     </div>
 
+    <div class="danger-zone" style="margin-top:50px; border-top: 1px dashed #ccc; padding-top:20px;">
+        <button class="btn-danger" style="width: 100%; opacity: 0.7;" onclick="clearFullCache()">Reset All Data</button>
+    </div>
+
     <script>
         let templates = JSON.parse(localStorage.getItem('workoutTemplates')) || [];
         let history = JSON.parse(localStorage.getItem('workoutHistory')) || [];
         let activeSessionData = null;
-        let isEditing = false;
+        let isEditingWorkout = false;
+        let editTemplateIdx = null;
 
         function formatVideoLink(link) {
-            if (!link) return null;
+            if (!link || link.trim() === "") return null;
+            link = link.trim();
             if (link.includes('drive.google.com')) {
                 const idMatch = link.match(/\/d\/(.+?)\//) || link.match(/id=(.+?)(&|$)/);
                 return idMatch ? `https://drive.google.com/embed?id=${idMatch[1]}` : link;
@@ -89,22 +94,53 @@
             const exStr = document.getElementById('tplExercises').value.trim();
             if (!nameInput || !exStr) return;
             
-            // Regex to find: Exercise Name [Link]
-            const exArray = exStr.split(',').map(item => {
-                const parts = item.match(/(.+?)\s*\[(.*?)\]/) || [null, item.trim(), ""];
-                return { name: parts[1], video: formatVideoLink(parts[2]) };
-            });
+            const rawItems = exStr.split(/,(?![^\[]*\])/);
+            const exArray = rawItems.map(item => {
+                const match = item.match(/^([^\[]+)(?:\[([^\]]+)\])?/);
+                return match ? { name: match[1].trim(), video: match[2] ? formatVideoLink(match[2]) : null } : { name: item.trim(), video: null };
+            }).filter(ex => ex.name !== "");
 
-            templates.push({ name: nameInput, exercises: exArray });
+            if (editTemplateIdx !== null) {
+                templates[editTemplateIdx] = { name: nameInput, exercises: exArray };
+                editTemplateIdx = null;
+            } else {
+                templates.push({ name: nameInput, exercises: exArray });
+            }
+            
             localStorage.setItem('workoutTemplates', JSON.stringify(templates));
             location.reload();
+        }
+
+        function deleteTemplate(idx) {
+            if(confirm("Delete this template?")) {
+                templates.splice(idx, 1);
+                localStorage.setItem('workoutTemplates', JSON.stringify(templates));
+                location.reload();
+            }
+        }
+
+        function editTemplate(idx) {
+            const t = templates[idx];
+            document.getElementById('tplName').value = t.name;
+            document.getElementById('tplExercises').value = t.exercises.map(ex => 
+                ex.name + (ex.video ? ` [${ex.video}]` : "")
+            ).join(', ');
+            editTemplateIdx = idx;
+            document.getElementById('tplBtn').innerText = "Update Template";
+            document.getElementById('tplBtn').style.background = "var(--warning)";
+            document.getElementById('tplBtn').style.color = "#000";
+            window.scrollTo(0,0);
         }
 
         function renderTemplates() {
             const select = document.getElementById('tplSelect');
             const list = document.getElementById('templateList');
-            templates.forEach(t => {
-                list.innerHTML += `<span class="template-tag">${t.name}</span> `;
+            templates.forEach((t, i) => {
+                list.innerHTML += `
+                    <div class="template-tag-container">
+                        <span class="template-tag" onclick="editTemplate(${i})">${t.name} (Edit)</span>
+                        <span style="color:var(--danger); font-weight:bold; cursor:pointer;" onclick="deleteTemplate(${i})">✕</span>
+                    </div>`;
                 select.innerHTML += `<option value="${t.name}">${t.name}</option>`;
             });
         }
@@ -113,7 +149,7 @@
             const sel = document.getElementById('tplSelect').value;
             if (!sel) return;
             const tpl = templates.find(t => t.name === sel);
-            isEditing = false;
+            isEditingWorkout = false;
             activeSessionData = { 
                 id: Date.now(), name: tpl.name, date: new Date().toLocaleDateString('en-GB'),
                 exercises: tpl.exercises.map(ex => ({ ...ex, sets: [] })) 
@@ -157,7 +193,7 @@
         function updateSet(i, s, v) { activeSessionData.exercises[i].sets[s] = v; }
 
         function finishSession() {
-            if (isEditing) {
+            if (isEditingWorkout) {
                 const i = history.findIndex(s => s.id === activeSessionData.id);
                 if (i !== -1) history[i] = activeSessionData;
             } else { history.unshift(activeSessionData); }
@@ -166,10 +202,10 @@
         }
 
         function editSession(id) {
-            isEditing = true;
+            isEditingWorkout = true;
             activeSessionData = JSON.parse(JSON.stringify(history.find(s => s.id === id)));
-            showUI(`Edit: ${activeSessionData.name}`);
-            document.getElementById('saveBtn').innerText = "Update Session";
+            showUI(`Edit History: ${activeSessionData.name}`);
+            document.getElementById('saveBtn').innerText = "Update Record";
         }
 
         function renderHistory(data = history) {
@@ -189,7 +225,7 @@
                 </div>`).join('');
         }
 
-        function deleteSession(id) { if(confirm("Delete?")) { history = history.filter(s => s.id !== id); localStorage.setItem('workoutHistory', JSON.stringify(history)); location.reload(); }}
+        function deleteSession(id) { if(confirm("Delete history record?")) { history = history.filter(s => s.id !== id); localStorage.setItem('workoutHistory', JSON.stringify(history)); location.reload(); }}
         function filterHistoryByTemplate() {
             const sel = document.getElementById('tplSelect').value;
             renderHistory(history.filter(s => s.name === sel));
@@ -208,7 +244,7 @@
             };
             reader.readAsText(e.target.files[0]);
         }
-        function clearFullCache() { if(confirm("Wipe all?")) { localStorage.clear(); location.reload(); } }
+        function clearFullCache() { if(confirm("Wipe all data?")) { localStorage.clear(); location.reload(); } }
         function cancelSession() { location.reload(); }
         renderTemplates();
         renderHistory();
