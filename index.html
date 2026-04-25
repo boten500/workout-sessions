@@ -5,19 +5,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Calisthenics Tracker</title>
     <style>
-        :root { --primary: #007bff; --danger: #dc3545; --success: #28a745; --dark: #343a40; --info: #17a2b8; --grey: #6c757d; }
+        :root { --primary: #007bff; --danger: #dc3545; --success: #28a745; --dark: #343a40; --info: #17a2b8; --grey: #6c757d; --warning: #ffc107; }
         body { font-family: -apple-system, sans-serif; padding: 15px; background: #f8f9fa; color: #333; padding-bottom: 100px; }
         .card { background: white; padding: 15px; border-radius: 12px; margin-bottom: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
         h2, h3 { margin-top: 0; color: #111; }
         input, button, select { padding: 12px; margin: 5px 0; width: 100%; border-radius: 8px; border: 1px solid #ddd; box-sizing: border-box; font-size: 16px; }
         button { background: var(--primary); color: white; border: none; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; }
         .btn-outline { background: transparent; color: var(--primary); border: 1px solid var(--primary); }
-        .btn-danger { background: var(--danger); font-size: 12px; padding: 8px; width: auto; margin-top: 10px; }
+        .btn-danger { background: var(--danger); font-size: 12px; padding: 8px; width: auto; margin-top: 0; }
         .btn-grey { background: var(--grey); font-size: 12px; padding: 6px 12px; width: auto; }
+        .btn-warning { background: var(--warning); color: #212529; font-size: 12px; padding: 8px; width: auto; }
         .btn-info { background: var(--info); }
         .exercise-block { border-left: 4px solid var(--primary); padding-left: 10px; margin-bottom: 20px; }
         .set-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
-        .set-row span { min-width: 60px; font-weight: bold; }
+        .set-row span { min-width: 60px; font-weight: bold; font-size: 14px; }
         .set-row input { flex-grow: 1; }
         .history-item { border-bottom: 1px solid #eee; padding-bottom: 15px; }
         .template-tag { font-size: 11px; background: #e9ecef; padding: 4px 8px; border-radius: 10px; display: inline-block; margin: 2px; text-transform: uppercase; }
@@ -50,9 +51,9 @@
     </div>
 
     <div id="active-session" style="display:none;">
-        <h2 id="currentSessionTitle"></h2>
+        <h2 id="currentSessionTitle">Workout</h2>
         <div id="exerciseArea"></div>
-        <button onclick="finishSession()" style="background: var(--success);">Finish & Save Session</button>
+        <button id="saveBtn" onclick="finishSession()" style="background: var(--success);">Finish & Save Session</button>
         <button class="btn-outline" onclick="cancelSession()" style="margin-top:10px;">Cancel (Discard)</button>
     </div>
 
@@ -73,6 +74,7 @@
         let templates = JSON.parse(localStorage.getItem('workoutTemplates')) || [];
         let history = JSON.parse(localStorage.getItem('workoutHistory')) || [];
         let activeSessionData = null;
+        let isEditing = false;
 
         function saveTemplate() {
             const nameInput = document.getElementById('tplName').value.trim();
@@ -99,15 +101,30 @@
             const selectedName = document.getElementById('tplSelect').value;
             if (!selectedName) return alert("Select a template!");
             const tpl = templates.find(t => t.name === selectedName);
+            isEditing = false;
             activeSessionData = { 
-                id: Date.now(), // Unique ID for filtering/deleting correctly
+                id: Date.now(),
                 name: tpl.name, 
                 date: new Date().toLocaleDateString('en-GB'),
                 exercises: tpl.exercises.map(name => ({ name, sets: [] })) 
             };
+            showWorkoutUI(tpl.name);
+        }
+
+        function editSession(id) {
+            const sessionToEdit = history.find(s => s.id === id);
+            if (!sessionToEdit) return;
+            isEditing = true;
+            // Create a deep copy to avoid modifying history until saved
+            activeSessionData = JSON.parse(JSON.stringify(sessionToEdit));
+            showWorkoutUI(`Editing: ${activeSessionData.name}`);
+            document.getElementById('saveBtn').innerText = "Update & Save Changes";
+        }
+
+        function showWorkoutUI(title) {
             document.getElementById('setup-section').style.display = 'none';
             document.getElementById('active-session').style.display = 'block';
-            document.getElementById('currentSessionTitle').innerText = tpl.name;
+            document.getElementById('currentSessionTitle').innerText = title;
             renderActiveSession();
         }
 
@@ -120,7 +137,7 @@
                         ${ex.sets.map((val, setIdx) => `
                             <div class="set-row">
                                 <span>Set ${setIdx + 1}:</span>
-                                <input type="number" value="${val}" onchange="updateSet(${exIdx}, ${setIdx}, this.value)">
+                                <input type="text" value="${val}" onchange="updateSet(${exIdx}, ${setIdx}, this.value)" placeholder="e.g. 10 or 15s">
                                 <button class="btn-danger" style="margin:0; padding:5px 10px;" onclick="removeSet(${exIdx}, ${setIdx})">✕</button>
                             </div>
                         `).join('')}
@@ -135,7 +152,13 @@
         function updateSet(exIdx, setIdx, val) { activeSessionData.exercises[exIdx].sets[setIdx] = val; }
 
         function finishSession() {
-            history.unshift(activeSessionData);
+            if (isEditing) {
+                // Find index of original session and replace it
+                const index = history.findIndex(s => s.id === activeSessionData.id);
+                if (index !== -1) history[index] = activeSessionData;
+            } else {
+                history.unshift(activeSessionData);
+            }
             localStorage.setItem('workoutHistory', JSON.stringify(history));
             location.reload();
         }
@@ -159,12 +182,15 @@
                             <small style="color:var(--grey)">${s.date}</small><br>
                             <strong>${s.name}</strong>
                         </div>
-                        <button class="btn-danger" style="margin-top:0" onclick="deleteSession(${s.id || 0}, '${s.date}')">Delete</button>
+                        <div class="flex-group">
+                            <button class="btn-warning" onclick="editSession(${s.id})">Edit</button>
+                            <button class="btn-danger" onclick="deleteSession(${s.id}, '${s.date}')">Delete</button>
+                        </div>
                     </div>
                     ${s.exercises.map(ex => `
                         <div style="margin-top:10px;">
                             <strong>* ${ex.name}</strong>
-                            ${ex.sets.map((r, si) => `<div style="font-size:14px; margin-left:10px;">- set ${si+1}: ${r || 0}</div>`).join('')}
+                            ${ex.sets.map((r, si) => `<div style="font-size:14px; margin-left:10px; color:#555;">- set ${si+1}: ${r || 0}</div>`).join('')}
                         </div>
                     `).join('')}
                 </div>
@@ -173,8 +199,7 @@
 
         function deleteSession(id, date) {
             if(confirm(`Delete session from ${date}?`)) {
-                // Find by ID or fallback to date for older sessions
-                history = history.filter(s => (s.id !== id) || (s.id === undefined && s.date !== date));
+                history = history.filter(s => s.id !== id);
                 localStorage.setItem('workoutHistory', JSON.stringify(history));
                 location.reload();
             }
