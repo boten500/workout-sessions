@@ -20,8 +20,8 @@
         .set-row span { min-width: 50px; font-weight: bold; font-size: 14px; }
         .video-container { width: 100%; aspect-ratio: 16/9; margin: 10px 0; display: none; }
         iframe { width: 100%; height: 100%; border-radius: 8px; border: none; }
-        .template-tag-container { display: flex; align-items: center; background: #e9ecef; border-radius: 10px; padding: 2px 8px; margin: 4px; display: inline-flex; gap: 5px; }
-        .template-tag { font-size: 11px; text-transform: uppercase; font-weight: bold; cursor: pointer; }
+        .template-tag-container { display: flex; align-items: center; background: #e9ecef; border-radius: 10px; padding: 4px 10px; margin: 4px; display: inline-flex; gap: 8px; }
+        .template-tag { font-size: 12px; text-transform: uppercase; font-weight: bold; cursor: pointer; color: var(--dark); }
         .flex-group { display: flex; gap: 10px; }
         #fileInput { display: none; }
     </style>
@@ -75,8 +75,19 @@
         let isEditingWorkout = false;
         let editTemplateIdx = null;
 
+        // CRITICAL FIX: Ensures old strings are treated as names
+        function getExName(ex) {
+            if (typeof ex === 'string') return ex;
+            return ex.name || "Unknown Exercise";
+        }
+
+        function getExVideo(ex) {
+            if (typeof ex === 'string') return null;
+            return ex.video || null;
+        }
+
         function formatVideoLink(link) {
-            if (!link || link.trim() === "") return null;
+            if (!link || typeof link !== 'string' || link.trim() === "") return null;
             link = link.trim();
             if (link.includes('drive.google.com')) {
                 const idMatch = link.match(/\/d\/(.+?)\//) || link.match(/id=(.+?)(&|$)/);
@@ -96,8 +107,13 @@
             
             const rawItems = exStr.split(/,(?![^\[]*\])/);
             const exArray = rawItems.map(item => {
-                const match = item.match(/^([^\[]+)(?:\[([^\]]+)\])?/);
-                return match ? { name: match[1].trim(), video: match[2] ? formatVideoLink(match[2]) : null } : { name: item.trim(), video: null };
+                const bracketIndex = item.indexOf('[');
+                if (bracketIndex !== -1) {
+                    const name = item.substring(0, bracketIndex).trim();
+                    const link = item.substring(bracketIndex + 1, item.lastIndexOf(']')).trim();
+                    return { name: name || "Exercise", video: formatVideoLink(link) };
+                }
+                return { name: item.trim() || "Exercise", video: null };
             }).filter(ex => ex.name !== "");
 
             if (editTemplateIdx !== null) {
@@ -111,35 +127,14 @@
             location.reload();
         }
 
-        function deleteTemplate(idx) {
-            if(confirm("Delete this template?")) {
-                templates.splice(idx, 1);
-                localStorage.setItem('workoutTemplates', JSON.stringify(templates));
-                location.reload();
-            }
-        }
-
-        function editTemplate(idx) {
-            const t = templates[idx];
-            document.getElementById('tplName').value = t.name;
-            document.getElementById('tplExercises').value = t.exercises.map(ex => 
-                ex.name + (ex.video ? ` [${ex.video}]` : "")
-            ).join(', ');
-            editTemplateIdx = idx;
-            document.getElementById('tplBtn').innerText = "Update Template";
-            document.getElementById('tplBtn').style.background = "var(--warning)";
-            document.getElementById('tplBtn').style.color = "#000";
-            window.scrollTo(0,0);
-        }
-
         function renderTemplates() {
             const select = document.getElementById('tplSelect');
             const list = document.getElementById('templateList');
             templates.forEach((t, i) => {
                 list.innerHTML += `
                     <div class="template-tag-container">
-                        <span class="template-tag" onclick="editTemplate(${i})">${t.name} (Edit)</span>
-                        <span style="color:var(--danger); font-weight:bold; cursor:pointer;" onclick="deleteTemplate(${i})">✕</span>
+                        <span class="template-tag" onclick="editTemplate(${i})">${t.name}</span>
+                        <span style="color:var(--danger); font-weight:bold; cursor:pointer; padding: 0 5px;" onclick="deleteTemplate(${i})">✕</span>
                     </div>`;
                 select.innerHTML += `<option value="${t.name}">${t.name}</option>`;
             });
@@ -152,21 +147,13 @@
             isEditingWorkout = false;
             activeSessionData = { 
                 id: Date.now(), name: tpl.name, date: new Date().toLocaleDateString('en-GB'),
-                exercises: tpl.exercises.map(ex => ({ ...ex, sets: [] })) 
+                exercises: tpl.exercises.map(ex => ({ 
+                    name: getExName(ex), 
+                    video: getExVideo(ex), 
+                    sets: [] 
+                })) 
             };
             showUI(tpl.name);
-        }
-
-        function showUI(title) {
-            document.getElementById('setup-section').style.display = 'none';
-            document.getElementById('active-session').style.display = 'block';
-            document.getElementById('currentSessionTitle').innerText = title;
-            renderActive();
-        }
-
-        function toggleVideo(id) {
-            const el = document.getElementById(id);
-            el.style.display = el.style.display === 'block' ? 'none' : 'block';
         }
 
         function renderActive() {
@@ -188,26 +175,6 @@
                 </div>`).join('');
         }
 
-        function addSet(i) { activeSessionData.exercises[i].sets.push(""); renderActive(); }
-        function removeSet(i, s) { activeSessionData.exercises[i].sets.splice(s, 1); renderActive(); }
-        function updateSet(i, s, v) { activeSessionData.exercises[i].sets[s] = v; }
-
-        function finishSession() {
-            if (isEditingWorkout) {
-                const i = history.findIndex(s => s.id === activeSessionData.id);
-                if (i !== -1) history[i] = activeSessionData;
-            } else { history.unshift(activeSessionData); }
-            localStorage.setItem('workoutHistory', JSON.stringify(history));
-            location.reload();
-        }
-
-        function editSession(id) {
-            isEditingWorkout = true;
-            activeSessionData = JSON.parse(JSON.stringify(history.find(s => s.id === id)));
-            showUI(`Edit History: ${activeSessionData.name}`);
-            document.getElementById('saveBtn').innerText = "Update Record";
-        }
-
         function renderHistory(data = history) {
             const log = document.getElementById('historyLog');
             log.innerHTML = data.map(s => `
@@ -219,21 +186,56 @@
                             <button class="btn-danger" onclick="deleteSession(${s.id})">Delete</button>
                         </div>
                     </div>
-                    ${s.exercises.map(ex => `<div style="margin-top:8px;"><strong>* ${ex.name}</strong>
-                        ${ex.sets.map((r, i) => `<div style="font-size:13px; margin-left:12px;">- Set ${i+1}: ${r}</div>`).join('')}
-                    </div>`).join('')}
+                    ${s.exercises.map(ex => `
+                        <div style="margin-top:8px;"><strong>* ${getExName(ex)}</strong>
+                            ${ex.sets.map((r, i) => `<div style="font-size:13px; margin-left:12px;">- Set ${i+1}: ${r}</div>`).join('')}
+                        </div>`).join('')}
                 </div>`).join('');
         }
 
-        function deleteSession(id) { if(confirm("Delete history record?")) { history = history.filter(s => s.id !== id); localStorage.setItem('workoutHistory', JSON.stringify(history)); location.reload(); }}
-        function filterHistoryByTemplate() {
-            const sel = document.getElementById('tplSelect').value;
-            renderHistory(history.filter(s => s.name === sel));
+        function addSet(i) { activeSessionData.exercises[i].sets.push(""); renderActive(); }
+        function removeSet(i, s) { activeSessionData.exercises[i].sets.splice(s, 1); renderActive(); }
+        function updateSet(i, s, v) { activeSessionData.exercises[i].sets[s] = v; }
+        function finishSession() {
+            if (isEditingWorkout) {
+                const i = history.findIndex(s => s.id === activeSessionData.id);
+                if (i !== -1) history[i] = activeSessionData;
+            } else { history.unshift(activeSessionData); }
+            localStorage.setItem('workoutHistory', JSON.stringify(history));
+            location.reload();
         }
-        function exportData() {
-            const blob = new Blob([JSON.stringify({ templates, history })], { type: 'application/json' });
-            const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'backup.json'; a.click();
+        function editSession(id) {
+            isEditingWorkout = true;
+            activeSessionData = JSON.parse(JSON.stringify(history.find(s => s.id === id)));
+            showUI(`Edit: ${activeSessionData.name}`);
+            document.getElementById('saveBtn').innerText = "Update Record";
         }
+        function showUI(title) {
+            document.getElementById('setup-section').style.display = 'none';
+            document.getElementById('active-session').style.display = 'block';
+            document.getElementById('currentSessionTitle').innerText = title;
+            renderActive();
+        }
+        function toggleVideo(id) {
+            const el = document.getElementById(id);
+            el.style.display = el.style.display === 'block' ? 'none' : 'block';
+        }
+        function deleteTemplate(idx) { if(confirm("Delete?")) { templates.splice(idx, 1); localStorage.setItem('workoutTemplates', JSON.stringify(templates)); location.reload(); } }
+        function editTemplate(idx) {
+            const t = templates[idx];
+            document.getElementById('tplName').value = t.name;
+            document.getElementById('tplExercises').value = t.exercises.map(ex => {
+                const name = getExName(ex);
+                const vid = getExVideo(ex);
+                return name + (vid ? ` [${vid}]` : "");
+            }).join(', ');
+            editTemplateIdx = idx;
+            document.getElementById('tplBtn').innerText = "Update Template";
+            window.scrollTo(0,0);
+        }
+        function deleteSession(id) { if(confirm("Delete?")) { history = history.filter(s => s.id !== id); localStorage.setItem('workoutHistory', JSON.stringify(history)); location.reload(); }}
+        function filterHistoryByTemplate() { renderHistory(history.filter(s => s.name === document.getElementById('tplSelect').value)); }
+        function exportData() { const blob = new Blob([JSON.stringify({ templates, history })], { type: 'application/json' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'backup.json'; a.click(); }
         function importData(e) {
             const reader = new FileReader();
             reader.onload = (f) => {
@@ -244,7 +246,7 @@
             };
             reader.readAsText(e.target.files[0]);
         }
-        function clearFullCache() { if(confirm("Wipe all data?")) { localStorage.clear(); location.reload(); } }
+        function clearFullCache() { if(confirm("Wipe all?")) { localStorage.clear(); location.reload(); } }
         function cancelSession() { location.reload(); }
         renderTemplates();
         renderHistory();
